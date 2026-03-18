@@ -1,0 +1,15 @@
+name = "fio"
+version = "1.0.0"
+gleam = ">= 1.14.0"
+
+description = "Complete, safe, ergonomic file operations for all Gleam targets"
+licences = ["MIT"]
+repository = { type = "github", user = "lupodevelop", repo = "fio" }
+
+[dependencies]
+gleam_stdlib = ">= 0.69.0 and < 1.0.0"
+filepath = ">= 1.1.0 and < 2.0.0"
+
+[dev-dependencies]
+gleeunit = ">= 1.0.0 and < 2.0.0"
+woof = ">= 1.0.1 and < 2.0.0"
