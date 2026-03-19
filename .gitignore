@@ -1,17 +1,37 @@
-.eunit
-*.o
+# Erlang/Elixir build artifacts
 *.beam
-*.plt
+*.ez
 erl_crash.dump
-.concrete/DEV_MODE
 
-# rebar 2.x
-.rebar
-rel/example_project
-ebin/*.beam
-deps
+# Gleam build output
+/_gleam_artefacts
+**/_gleam_artefacts
+/ebin
+**/ebin
 
-# rebar 3
-.rebar3
-_build/
-_checkouts/
+# Project build dirs
+/build
+/dev/output
+
+# IDE/editor metadata
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Generated files
+*.log
+*.tmp
+*.temp
+
+# Node / JS
+node_modules/
+npm-debug.log*
+yarn-error.log*
+package-lock.json
+pnpm-lock.yaml
+
+# Other
+.coverage
+.coverage.*
