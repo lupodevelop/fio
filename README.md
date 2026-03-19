@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="assets/img/fio.png" width="256" height="256" alt="fio logo">
+  <img src="https://raw.githubusercontent.com/lupodevelop/fio/main/assets/img/fio.png" width="256" height="256" alt="fio logo">
 </p>
 
 # fio
