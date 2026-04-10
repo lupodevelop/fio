@@ -794,12 +794,9 @@ pub fn copy_if_newer_no_error_when_same_mtime_test() {
 
 pub fn read_fold_counts_bytes_test() {
   let p = "_test_read_fold.bin"
-  let assert Ok(_) =
-    fio.write_bits(p, <<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11>>)
+  let assert Ok(_) = fio.write_bits(p, <<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11>>)
   let result =
-    fio.read_fold(p, 4, 0, fn(acc, chunk) {
-      acc + bit_array.byte_size(chunk)
-    })
+    fio.read_fold(p, 4, 0, fn(acc, chunk) { acc + bit_array.byte_size(chunk) })
   result |> should.equal(Ok(12))
   let assert Ok(_) = fio.delete(p)
 }

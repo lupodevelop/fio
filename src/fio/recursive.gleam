@@ -14,10 +14,7 @@ fn inode_key(info: FileInfo, fallback_path: String) -> String {
   case info.inode {
     0 -> fallback_path
     _ ->
-      "dev:"
-      <> int.to_string(info.dev)
-      <> ";ino:"
-      <> int.to_string(info.inode)
+      "dev:" <> int.to_string(info.dev) <> ";ino:" <> int.to_string(info.inode)
   }
 }
 
