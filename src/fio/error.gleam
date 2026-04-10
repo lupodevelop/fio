@@ -150,6 +150,10 @@ pub fn describe(error: FioError) -> String {
     InvalidPath(path, reason) -> "Invalid path " <> path <> ": " <> reason
     AtomicFailed(op, reason) -> "Atomic " <> op <> " failed: " <> reason
     TempFailed(reason) -> "Temp file operation failed: " <> reason
-    Unknown(inner, _) -> "Unknown error: " <> inner
+    Unknown(inner, context) ->
+      case context {
+        option.None -> "Unknown error: " <> inner
+        option.Some(ctx) -> "Unknown error: " <> inner <> " (" <> ctx <> ")"
+      }
   }
 }
