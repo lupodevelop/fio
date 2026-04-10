@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-04-10
+
+### Added
+
+- **`fio.ensure_file(path)`**: creates a file if it does not exist; no-op if it
+  already does. Useful for initialising config or lock files idempotently.
+
+- **`fio.copy_if_newer(src, dest)`**: copies `src` to `dest` only when `src`
+  has a newer `mtime` than `dest` (or when `dest` is absent). Returns
+  `Ok(True)` when a copy was performed, `Ok(False)` when it was skipped.
+
+- **`fio.read_fold(path, chunk_size, initial, f)`**: reads a file in chunks
+  and folds each chunk into an accumulator. Lets you process arbitrarily large
+  files without loading them fully into memory.
+
+- **`handle.fold_chunks(handle, chunk_size, initial, f)`**: same fold primitive
+  as `read_fold` but operates on an already-open `FileHandle`. Used internally
+  by `read_fold` and available for callers that manage their own handle
+  lifecycle.
+
+- **`fio/json` module**: thin I/O wrappers that compose with any
+  encoder/decoder function.
+  - `read_json(path, decoder)`: reads the file and passes the content to
+    `decoder`. Returns `Error(IoError(_))` on I/O failure and
+    `Error(ParseError(_))` when the decoder rejects the content.
+  - `write_json_atomic(path, value, encoder)`: encodes `value` and writes
+    atomically via `fio.write_atomic`.
+  - `JsonError(e)` type with `IoError(FioError)` and `ParseError(e)` variants.
+
+- **`fio/observer` module**: structured, extensible observability primitives.
+  - `Event` type: carries `op`, `path`, `outcome: Result(Nil, FioError)`, and
+    optional `bytes: Option(Int)`. Designed to be consumed by external packages
+    without knowing fio internals.
+  - `Sink` type alias (`fn(Event) -> Nil`): any package can implement a sink
+    (structured logger, metrics counter, test recorder, OpenTelemetry span, …).
+  - `emit(result, op, path, bytes, sink)`: core primitive — emits an `Event`
+    then returns `result` unchanged.
+  - `trace(result, op, path, sink)`: convenience wrapper without byte count.
+  - `trace_bytes(result, op, path, sink)`: automatically infers `bytes` from
+    a `BitArray` result (e.g. after `fio.read_bits`).
+  - `format(event)`: formats an `Event` as a human-readable string for simple
+    logging sinks.
+  - `fan_out(sink1, sink2)`: combines two sinks into one; both receive every
+    event. Enables log-to-stdout AND record-in-test simultaneously.
+  - `noop_sink`: discards all events; useful as a default/no-op argument when
+    observability is optional.
+
+### Fixed
+
+- **`error.describe` for `Unknown`**: the `context` field is now included in
+  the description string when present. Previously it was silently discarded.
+
+- **`recursive.gleam`**: extracted the four copies of the inode-key building
+  expression into a single private `inode_key(info, fallback)` helper, removing
+  the risk of the four copies diverging in future.
+
 ## [1.0.0] - 2026-03-18
 
 ### Added

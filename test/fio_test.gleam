@@ -1,8 +1,11 @@
 import fio
 import fio/error.{Enoent, NotUtf8}
 import fio/handle
+import fio/json as fjson
+import fio/observer
 import fio/path
 import fio/types
+import gleam/bit_array
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/order
@@ -733,4 +736,288 @@ pub fn handle_tell_test() {
   let assert Ok(2) = handle.tell(h)
   let assert Ok(_) = handle.close(h)
   let assert Ok(_) = fio.delete(p)
+}
+
+// ============================================================================
+// ensure_file
+// ============================================================================
+
+pub fn ensure_file_creates_when_missing_test() {
+  let p = "_test_ensure_file_new.txt"
+  let assert False = fio.exists(p)
+  let assert Ok(Nil) = fio.ensure_file(p)
+  fio.exists(p) |> should.equal(True)
+  fio.read(p) |> should.equal(Ok(""))
+  let assert Ok(_) = fio.delete(p)
+}
+
+pub fn ensure_file_noop_when_exists_test() {
+  let p = "_test_ensure_file_existing.txt"
+  let assert Ok(_) = fio.write(p, "preserve me")
+  let assert Ok(Nil) = fio.ensure_file(p)
+  fio.read(p) |> should.equal(Ok("preserve me"))
+  let assert Ok(_) = fio.delete(p)
+}
+
+// ============================================================================
+// copy_if_newer
+// ============================================================================
+
+pub fn copy_if_newer_copies_when_dest_missing_test() {
+  let src = "_test_cin_src.txt"
+  let dest = "_test_cin_dest.txt"
+  let assert Ok(_) = fio.write(src, "source")
+  let assert False = fio.exists(dest)
+  fio.copy_if_newer(src, dest) |> should.equal(Ok(True))
+  fio.read(dest) |> should.equal(Ok("source"))
+  let assert Ok(_) = fio.delete(src)
+  let assert Ok(_) = fio.delete(dest)
+}
+
+pub fn copy_if_newer_no_error_when_same_mtime_test() {
+  let src = "_test_cin_same_src.txt"
+  let dest = "_test_cin_same_dest.txt"
+  let assert Ok(_) = fio.write(src, "original")
+  let assert Ok(_) = fio.write(dest, "destination")
+  let assert Ok(_) = fio.touch(dest)
+  case fio.copy_if_newer(src, dest) {
+    Ok(_) -> Nil
+    Error(_) -> should.fail()
+  }
+  let assert Ok(_) = fio.delete(src)
+  let assert Ok(_) = fio.delete(dest)
+}
+
+// ============================================================================
+// read_fold (streaming)
+// ============================================================================
+
+pub fn read_fold_counts_bytes_test() {
+  let p = "_test_read_fold.bin"
+  let assert Ok(_) =
+    fio.write_bits(p, <<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11>>)
+  let result =
+    fio.read_fold(p, 4, 0, fn(acc, chunk) {
+      acc + bit_array.byte_size(chunk)
+    })
+  result |> should.equal(Ok(12))
+  let assert Ok(_) = fio.delete(p)
+}
+
+pub fn read_fold_collects_chunks_test() {
+  let p = "_test_read_fold_collect.txt"
+  let assert Ok(_) = fio.write(p, "abcdefgh")
+  let result = fio.read_fold(p, 2, [], fn(acc, chunk) { [chunk, ..acc] })
+  case result {
+    Ok(chunks) -> list.length(chunks) |> should.equal(4)
+    Error(_) -> should.fail()
+  }
+  let assert Ok(_) = fio.delete(p)
+}
+
+// ============================================================================
+// handle.fold_chunks
+// ============================================================================
+
+pub fn handle_fold_chunks_test() {
+  let p = "_test_fold_chunks.bin"
+  let assert Ok(_) = fio.write_bits(p, <<10, 20, 30, 40, 50, 60>>)
+  let assert Ok(h) = handle.open(p, handle.ReadOnly)
+  let result =
+    handle.fold_chunks(h, 3, 0, fn(acc, chunk) {
+      acc + bit_array.byte_size(chunk)
+    })
+  let assert Ok(_) = handle.close(h)
+  result |> should.equal(Ok(6))
+  let assert Ok(_) = fio.delete(p)
+}
+
+// ============================================================================
+// fio/json helpers
+// ============================================================================
+
+pub fn json_read_json_ok_test() {
+  let p = "_test_json_read.json"
+  let assert Ok(_) = fio.write(p, "{\"key\":\"value\"}")
+  let result = fjson.read_json(p, fn(s) { Ok(s) })
+  result |> should.equal(Ok("{\"key\":\"value\"}"))
+  let assert Ok(_) = fio.delete(p)
+}
+
+pub fn json_read_json_io_error_test() {
+  let result = fjson.read_json("_nonexistent_json_fio.json", fn(s) { Ok(s) })
+  case result {
+    Error(fjson.IoError(Enoent)) -> Nil
+    _ -> should.fail()
+  }
+}
+
+pub fn json_read_json_parse_error_test() {
+  let p = "_test_json_parse_err.json"
+  let assert Ok(_) = fio.write(p, "not json")
+  let result = fjson.read_json(p, fn(_s) { Error("invalid json") })
+  case result {
+    Error(fjson.ParseError("invalid json")) -> Nil
+    _ -> should.fail()
+  }
+  let assert Ok(_) = fio.delete(p)
+}
+
+pub fn json_write_json_atomic_test() {
+  let p = "_test_json_write_atomic.json"
+  let assert Ok(_) =
+    fjson.write_json_atomic(p, "hello", fn(s) { "\"" <> s <> "\"" })
+  fio.read(p) |> should.equal(Ok("\"hello\""))
+  let assert Ok(_) = fio.delete(p)
+}
+
+// ============================================================================
+// fio/observer helpers
+// ============================================================================
+
+pub fn observer_trace_ok_test() {
+  let p = "_test_observer_trace.txt"
+  let assert Ok(_) = fio.write(p, "observed")
+  let seen = "_test_observer_flag.txt"
+  fio.read(p)
+  |> observer.trace("read", p, fn(event) {
+    case event.outcome {
+      Ok(_) -> {
+        let assert Ok(_) = fio.write(seen, "ok")
+        Nil
+      }
+      Error(_) -> Nil
+    }
+  })
+  |> should.equal(Ok("observed"))
+  fio.exists(seen) |> should.equal(True)
+  let assert Ok(_) = fio.delete(p)
+  let assert Ok(_) = fio.delete(seen)
+}
+
+pub fn observer_trace_error_propagates_test() {
+  let flag = "_test_observer_err_flag.txt"
+  fio.read("_nonexistent_observer_test.txt")
+  |> observer.trace("read", "_nonexistent_observer_test.txt", fn(event) {
+    case event.outcome {
+      Error(_) -> {
+        let assert Ok(_) = fio.write(flag, "error_seen")
+        Nil
+      }
+      Ok(_) -> Nil
+    }
+  })
+  |> should.equal(Error(error.Enoent))
+  fio.read(flag) |> should.equal(Ok("error_seen"))
+  let assert Ok(_) = fio.delete(flag)
+}
+
+pub fn observer_emit_with_bytes_test() {
+  let p = "_test_observer_bytes.bin"
+  let assert Ok(_) = fio.write_bits(p, <<1, 2, 3, 4>>)
+  let recorded = "_test_observer_bytes_flag.txt"
+  fio.read_bits(p)
+  |> observer.emit("read_bits", p, option.Some(4), fn(event) {
+    case event.bytes {
+      option.Some(n) -> {
+        let assert Ok(_) = fio.write(recorded, "bytes=" <> string.inspect(n))
+        Nil
+      }
+      option.None -> Nil
+    }
+  })
+  |> should.equal(Ok(<<1, 2, 3, 4>>))
+  fio.read(recorded) |> should.equal(Ok("bytes=4"))
+  let assert Ok(_) = fio.delete(p)
+  let assert Ok(_) = fio.delete(recorded)
+}
+
+pub fn observer_trace_bytes_infers_size_test() {
+  let p = "_test_observer_trace_bytes.bin"
+  let assert Ok(_) = fio.write_bits(p, <<10, 20, 30>>)
+  let recorded = "_test_obs_tb_flag.txt"
+  fio.read_bits(p)
+  |> observer.trace_bytes("read_bits", p, fn(event) {
+    case event.bytes {
+      option.Some(n) -> {
+        let assert Ok(_) = fio.write(recorded, string.inspect(n))
+        Nil
+      }
+      option.None -> Nil
+    }
+  })
+  |> should.equal(Ok(<<10, 20, 30>>))
+  fio.read(recorded) |> should.equal(Ok("3"))
+  let assert Ok(_) = fio.delete(p)
+  let assert Ok(_) = fio.delete(recorded)
+}
+
+pub fn observer_format_ok_test() {
+  let event =
+    observer.Event(
+      op: "write",
+      path: "foo.txt",
+      outcome: Ok(Nil),
+      bytes: option.None,
+    )
+  observer.format(event)
+  |> should.equal("[fio] write foo.txt -> ok")
+}
+
+pub fn observer_format_error_with_bytes_test() {
+  let event =
+    observer.Event(
+      op: "read",
+      path: "bar.txt",
+      outcome: Error(error.Enoent),
+      bytes: option.Some(512),
+    )
+  let desc = observer.format(event)
+  string.contains(desc, "err(") |> should.equal(True)
+  string.contains(desc, "bytes=512") |> should.equal(True)
+}
+
+pub fn observer_fan_out_test() {
+  let flag1 = "_test_fanout_1.txt"
+  let flag2 = "_test_fanout_2.txt"
+  let sink1 = fn(_e: observer.Event) {
+    let assert Ok(_) = fio.write(flag1, "s1")
+    Nil
+  }
+  let sink2 = fn(_e: observer.Event) {
+    let assert Ok(_) = fio.write(flag2, "s2")
+    Nil
+  }
+  let combined = observer.fan_out(sink1, sink2)
+  fio.write("_test_fanout_src.txt", "x")
+  |> observer.trace("write", "_test_fanout_src.txt", combined)
+  |> should.equal(Ok(Nil))
+  fio.read(flag1) |> should.equal(Ok("s1"))
+  fio.read(flag2) |> should.equal(Ok("s2"))
+  let assert Ok(_) = fio.delete(flag1)
+  let assert Ok(_) = fio.delete(flag2)
+  let assert Ok(_) = fio.delete("_test_fanout_src.txt")
+}
+
+pub fn observer_noop_sink_test() {
+  // noop_sink must not raise or alter the result
+  fio.write("_test_noop_sink.txt", "data")
+  |> observer.trace("write", "_test_noop_sink.txt", observer.noop_sink)
+  |> should.equal(Ok(Nil))
+  let assert Ok(_) = fio.delete("_test_noop_sink.txt")
+}
+
+// ============================================================================
+// error.describe Unknown with context
+// ============================================================================
+
+pub fn error_describe_unknown_with_context_test() {
+  let e = error.Unknown("raw_error", option.Some("extra context"))
+  error.describe(e)
+  |> should.equal("Unknown error: raw_error (extra context)")
+}
+
+pub fn error_describe_unknown_no_context_test() {
+  let e = error.Unknown("raw_error", option.None)
+  error.describe(e) |> should.equal("Unknown error: raw_error")
 }

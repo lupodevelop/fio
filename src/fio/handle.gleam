@@ -264,3 +264,42 @@ pub fn seek(handle: FileHandle, position: Int) -> Result(Nil, FioError) {
 pub fn tell(handle: FileHandle) -> Result(Int, FioError) {
   io.tell(handle.inner)
 }
+
+// ---------------------------------------------------------------------------
+// Folding / streaming
+// ---------------------------------------------------------------------------
+
+/// Fold over all remaining chunks of the file, accumulating a result.
+///
+/// Reads `chunk_size` bytes at a time from the **current cursor position**
+/// until EOF, calling `f(acc, chunk)` for each chunk. Returns `Ok(final_acc)`
+/// when EOF is reached cleanly, or `Error(FioError)` on the first read failure.
+///
+/// ```gleam
+/// // Count bytes in a large file without loading it all into memory
+/// use h <- handle.with(path, handle.ReadOnly)
+/// handle.fold_chunks(h, 65_536, 0, fn(acc, chunk) {
+///   acc + bit_array.byte_size(chunk)
+/// })
+/// ```
+pub fn fold_chunks(
+  handle: FileHandle,
+  chunk_size: Int,
+  initial: acc,
+  f: fn(acc, BitArray) -> acc,
+) -> Result(acc, FioError) {
+  do_fold_chunks(handle, chunk_size, initial, f)
+}
+
+fn do_fold_chunks(
+  handle: FileHandle,
+  chunk_size: Int,
+  acc: acc,
+  f: fn(acc, BitArray) -> acc,
+) -> Result(acc, FioError) {
+  use chunk <- result.try(read_chunk(handle, chunk_size))
+  case chunk {
+    None -> Ok(acc)
+    Some(data) -> do_fold_chunks(handle, chunk_size, f(acc, data), f)
+  }
+}

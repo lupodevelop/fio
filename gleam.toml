@@ -1,5 +1,5 @@
 name = "fio"
-version = "1.0.0"
+version = "1.1.0"
 gleam = ">= 1.14.0"
 
 description = "Complete, safe, ergonomic file operations for all Gleam targets"
