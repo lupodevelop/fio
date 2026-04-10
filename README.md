@@ -20,23 +20,22 @@ All functionality is available via **`import fio`** (no need for submodule impor
 
 ## Features
 
-- **Unified API** — One `import fio` for all file operations. No juggling multiple packages.
-- **Cross-platform** — Works identically on Erlang, Node.js, Deno, and Bun.
-- **Rich errors** — POSIX-style error codes + semantic types like `NotUtf8(path)`. Pattern match precisely.
-- **Atomic writes** — `write_atomic` / `write_bits_atomic` guarantee readers never see partial content. Temporary files are cleaned up even if the rename fails.
-- **Random-access file handles** — `seek` and `tell` let you jump to arbitrary byte offsets.
-- **File handles** — `fio/handle` exposes `open`, `close`, `read_chunk`, `write` for large-file and
-  streaming scenarios; `with` helper prevents leaks.
-- **Type-safe permissions** — `FilePermissions` with `Set(Permission)`, not magic integers.
-- **Path operations** — `join`, `split`, `expand`, `safe_relative`, and more — built in.
-- **Symlinks & hard links** — Create, detect, read link targets.
-- **Symlink loop safety** — Recursive operations track `(dev, inode)` pairs; circular symlinks
-  are listed but never descended into. On Windows, where `inode` may be zero, the
-  full path string is used as a fallback key.
-- **FFI safety** — Erlang bindings map hash‑algorithm strings with a closed set,
-  preventing atom table exhaustion.
-- **Touch** — Create files or update timestamps, like Unix `touch`.
-- **Idempotent deletes** — `delete_all` succeeds silently on non-existent paths.
+- **Unified API**: One `import fio` for all file operations. No juggling multiple packages.
+- **Cross-platform**: Works identically on Erlang, Node.js, Deno, and Bun.
+- **Rich errors**: POSIX-style error codes plus semantic types like `NotUtf8(path)`. Pattern match precisely.
+- **Atomic writes**: `write_atomic` / `write_bits_atomic` guarantee readers never see partial content. Temporary files are cleaned up even if the rename fails.
+- **Streaming**: `read_fold` and `handle.fold_chunks` let you process files chunk by chunk without loading them fully into memory.
+- **Random-access file handles**: `seek` and `tell` let you jump to arbitrary byte offsets.
+- **File handles**: `fio/handle` exposes `open`, `close`, `read_chunk`, `write` for large-file and streaming scenarios. The `with` helper prevents handle leaks.
+- **High-level helpers**: `ensure_file`, `copy_if_newer`, and `fio/json` for common workflows.
+- **Type-safe permissions**: `FilePermissions` with `Set(Permission)`, not magic integers.
+- **Path operations**: `join`, `split`, `expand`, `safe_relative`, and more, built in.
+- **Symlinks and hard links**: Create, detect, read link targets.
+- **Symlink loop safety**: Recursive operations track `(dev, inode)` pairs. Circular symlinks are listed but never descended into. On Windows, where `inode` may be zero, the full path string is used as a fallback key.
+- **FFI safety**: Erlang bindings map hash algorithm strings with a closed set, preventing atom table exhaustion.
+- **Touch**: Create files or update timestamps, like Unix `touch`.
+- **Idempotent deletes**: `delete_all` succeeds silently on non-existent paths.
+- **Observability**: `fio/observer` provides structured event sinks and transparent wrappers to instrument any fio call without restructuring your code.
 
 ## Installation
 
@@ -65,13 +64,13 @@ pub fn main() {
 
   // Path safety (via the same `fio` facade)
   let safe = fio.safe_relative("../../../etc/passwd")
-  // safe == Error(Nil) — blocked!
+  // safe == Error(Nil) -- blocked!
 }
 ```
 
 ## API Overview
 
-### Reading & Writing
+### Reading and Writing
 
 | Function | Description |
 |---|---|
@@ -84,6 +83,14 @@ pub fn main() {
 | `fio.append(path, content)` | Append string |
 | `fio.append_bits(path, bytes)` | Append bytes |
 
+### High-level Helpers
+
+| Function | Description |
+|---|---|
+| `fio.ensure_file(path)` | Create file if it does not exist; no-op otherwise |
+| `fio.copy_if_newer(src, dest)` | Copy only when `src` is newer than `dest`; returns `Bool` |
+| `fio.read_fold(path, chunk_size, acc, f)` | Fold over file chunks without loading it all into memory |
+
 ### File Operations
 
 | Function | Description |
@@ -95,9 +102,9 @@ pub fn main() {
 | `fio.delete_directory(path)` | Delete an empty directory |
 | `fio.delete_all(path)` | Delete recursively (idempotent) |
 | `fio.touch(path)` | Create file or update modification time |
+| `fio.list_recursive(path)` | List all files in a directory recursively |
 
 > **Note:** `delete_all` does **not** follow directory symlinks. A symlink itself is deleted but its target is left untouched.
-| `fio.list_recursive(path)` | List all files in a directory recursively |
 
 ### Querying
 
@@ -110,7 +117,7 @@ pub fn main() {
 | `fio.file_info(path)` | Get file metadata (follows symlinks) |
 | `fio.link_info(path)` | Get metadata without following symlinks |
 
-### Symlinks & Links
+### Symlinks and Links
 
 | Function | Description |
 |---|---|
@@ -140,51 +147,26 @@ pub fn main() {
 | `fio.current_directory()` | Get working directory |
 | `fio.tmp_dir()` | Get system temp directory |
 
-## Cross-platform behavior notes
-
-Some behavior differs between BEAM (Erlang/OTP) and JavaScript runtimes (Node/Deno/Bun). The library aims to keep the API consistent, but underlying platform differences can affect:
-
-- **Synchronous I/O**: The JS implementation uses synchronous filesystem calls (`fs.readFileSync`, `fs.writeFileSync`, etc.). This is appropriate for many Gleam apps, but it blocks the event loop. If you target Deno/Bun, the runtime may still work (they provide Node compatibility layers) but the operations remain blocking.
-- **Permissions**: POSIX-style `chmod`/`stat` behavior is only meaningful on Unix-like platforms. On Windows, permissions queries/changes may be no-ops or behave differently, and `set_permissions` may return `Eperm`/`Enotsup`.
-- **Symlink creation**: Some platforms (notably Windows) require elevated privileges to create symlinks; when symlink creation fails, the library surfaces the OS error.
-- **Path normalization**: The `fio/path` module delegates to `filepath` (BEAM) or Node’s `path` (JS). Windows paths may use backslashes (`\\`) and drive letters; `safe_relative` normalizes backslashes to forward slashes to ensure consistent behavior.
-
-  For example, on Node.js (macOS host) the output of `path.join("C:\\foo", "bar")` is `C:\foo/bar`, while `path.win32.join` yields `C:\foo\\bar`. On BEAM, `fio/path.join` currently yields `C:\foo/bar` (mixing separators) and `path.split("C:\\foo\\bar")` returns a single segment `"C:\\foo\\bar"`.
-
-  You can inspect runtime behavior across targets using:
-
-  ```sh
-  node dev/path_behavior.js
-  # (or deno run dev/path_behavior.js, bun dev/path_behavior.js if available)
-  ```
-
-- **File handles**: On Node.js, append mode is enforced by the OS only when write calls use a `null` position; `fio/handle` tracks position and forces `null` when in append mode to preserve POSIX semantics.
-
-> Tip: If you rely on strict POSIX behavior (permissions, symlink semantics, dev/inode metadata), prefer running on Erlang/OTP where those semantics are stable.
-
-### File Handles (`fio/handle`)
+## File Handles (`fio/handle`)
 
 For large files or streaming scenarios where loading the entire content into
 memory is not acceptable, use the `fio/handle` module:
 
 ```gleam
 import fio/handle
-import gleam/result
 
 // Read a large log file chunk by chunk (64 KiB at a time)
 pub fn count_bytes(path: String) -> Result(Int, error.FioError) {
-  use h <- result.try(handle.open(path, handle.ReadOnly))
-  let assert Ok(bits) = handle.read_all_bits(h)
-  let _ = handle.close(h)
-  Ok(bit_array.byte_size(bits))
+  use h <- handle.with(path, handle.ReadOnly)
+  handle.fold_chunks(h, 65_536, 0, fn(acc, chunk) {
+    acc + bit_array.byte_size(chunk)
+  })
 }
 
 // Write to a file with explicit lifecycle control
 pub fn write_lines(path: String, lines: List(String)) -> Result(Nil, error.FioError) {
-  use h <- result.try(handle.open(path, handle.WriteOnly))
-  let result = list.try_each(lines, fn(line) { handle.write(h, line <> "\n") })
-  let _ = handle.close(h)
-  result
+  use h <- handle.with(path, handle.WriteOnly)
+  list.try_each(lines, fn(line) { handle.write(h, line <> "\n") })
 }
 ```
 
@@ -192,16 +174,81 @@ pub fn write_lines(path: String, lines: List(String)) -> Result(Nil, error.FioEr
 |---|---|
 | `handle.open(path, mode)` | Open a file (`ReadOnly`, `WriteOnly`, `AppendOnly`) |
 | `handle.close(handle)` | Close the handle, release the OS file descriptor |
+| `handle.with(path, mode, callback)` | Open, run callback, always close (recommended) |
 | `handle.read_chunk(handle, size)` | Read up to `size` bytes; `Ok(None)` at EOF |
 | `handle.read_all_bits(handle)` | Read all remaining bytes as `BitArray` |
 | `handle.read_all(handle)` | Read all remaining content as UTF-8 `String` |
+| `handle.fold_chunks(handle, size, acc, f)` | Fold over all remaining chunks |
 | `handle.write(handle, content)` | Write a UTF-8 string |
 | `handle.write_bits(handle, bytes)` | Write raw bytes |
+| `handle.seek(handle, offset)` | Move cursor to byte offset from start |
+| `handle.tell(handle)` | Return current byte offset |
 
-> **Note**: `FileHandle` is intentionally opaque. Always call `close` when done —
-> the OS file descriptor is not automatically released.
+> **Note**: `FileHandle` is intentionally opaque. Always call `close` when done, or use `handle.with` which closes automatically.
 
-### Path Operations (`fio/path`)
+## JSON Helpers (`fio/json`)
+
+`fio/json` provides I/O wrappers that compose cleanly with any encoder/decoder
+function. It does not bundle a JSON parser; bring your own (e.g. `gleam_json`).
+
+```gleam
+import fio/json as fjson
+import gleam_json
+
+// Read and decode
+case fjson.read_json("config.json", gleam_json.decode_string) {
+  Ok(config) -> use_config(config)
+  Error(fjson.IoError(e)) -> io.println("I/O failed: " <> error.describe(e))
+  Error(fjson.ParseError(e)) -> io.println("Bad JSON: " <> e)
+}
+
+// Encode and write atomically
+fjson.write_json_atomic("config.json", my_value, encode_fn)
+```
+
+| Function | Description |
+|---|---|
+| `fjson.read_json(path, decoder)` | Read file and run `decoder` on contents |
+| `fjson.write_json_atomic(path, value, encoder)` | Encode and write atomically |
+
+The `JsonError(e)` type has two variants: `IoError(FioError)` and `ParseError(e)`.
+
+## Observability (`fio/observer`)
+
+Instrument any fio call without restructuring your code.
+
+```gleam
+import fio
+import fio/observer
+import gleam/io
+
+fn log_sink(event: observer.Event) -> Nil {
+  io.println(observer.format(event))
+}
+
+pub fn main() {
+  fio.read("config.json")
+  |> observer.trace("read", "config.json", log_sink)
+}
+```
+
+For byte-oriented operations such as `read_bits`, use `trace_bytes` to infer the byte count automatically.
+
+```gleam
+fio.read_bits("archive.bin")
+|> observer.trace_bytes("read_bits", "archive.bin", log_sink)
+```
+
+| Function | Description |
+|---|---|
+| `observer.emit(result, op, path, bytes, sink)` | Emit a structured `Event` and return `result` unchanged |
+| `observer.trace(result, op, path, sink)` | Emit an event with `bytes = None` |
+| `observer.trace_bytes(result, op, path, sink)` | Emit an event and infer `bytes` from `BitArray` results |
+| `observer.format(event)` | Format an event as a human-readable string |
+| `observer.fan_out(first, second)` | Combine two sinks so both receive every event |
+| `observer.noop_sink` | Sink that discards all events |
+
+## Path Operations (`fio/path`)
 
 | Function | Description |
 |---|---|
@@ -216,7 +263,7 @@ pub fn write_lines(path: String, lines: List(String)) -> Result(Nil, error.FioEr
 | `path.strip_extension(path)` | Remove extension |
 | `path.is_absolute(path)` | Check if path is absolute |
 | `path.expand(path)` | Normalize `.` and `..` segments |
-| `path.safe_relative(path)` | Validate path doesn't escape via `..` |
+| `path.safe_relative(path)` | Validate path does not escape via `..` |
 
 ## Atomic Writes
 
@@ -244,7 +291,7 @@ partial writes are acceptable.
 
 ## Error Handling
 
-fio uses `FioError`: 39 POSIX-style error constructors plus 7 semantic variants; each error has a human-readable description available via `error.describe`:
+fio uses `FioError`: 39 POSIX-style error constructors plus 7 semantic variants. Each error has a human-readable description via `error.describe`:
 
 ```gleam
 import fio
@@ -255,15 +302,13 @@ case fio.read("data.bin") {
   Error(Enoent) -> io.println("Not found")
   Error(Eacces) -> io.println("Permission denied")
   Error(NotUtf8(path)) -> {
-    // File exists but isn't valid UTF-8 — use read_bits instead
+    // File exists but is not valid UTF-8 -- use read_bits instead
     let assert Ok(bytes) = fio.read_bits(path)
     use_bytes(bytes)
   }
   Error(e) -> io.println(error.describe(e))
 }
 ```
-
-Every error has a human-readable description via `error.describe`.
 
 ## Type-Safe Permissions
 
@@ -283,8 +328,6 @@ fio.set_permissions("script.sh", perms)
 
 ## Platform Support
 
-### Development
-
 Run the complete test suite locally across targets with the helper script:
 
 ```sh
@@ -293,64 +336,40 @@ Run the complete test suite locally across targets with the helper script:
 ./bin/test javascript # Node.js only
 ```
 
-This mirrors the CI matrix without needing to publish the package.
-
-## Platform Support
-
 | Target | Runtime | Status |
 |---|---|---|
 | Erlang | OTP | Full support |
 | JavaScript | Node.js | Full support |
 | JavaScript | Deno | Full support |
 | JavaScript | Bun | Full support |
-### Platform Notes & Limitations
+
+### Platform Notes and Limitations
 
 Some behaviours vary by OS or filesystem. The library strives for consistency
 but there are edge cases you should be aware of:
 
-* **Windows differences** – permission‑setting functions are no‑ops and
-  `%o` octal permissions are ignored by the OS. Atomic rename may fail if the
-  destination already exists (a Windows API restriction); a failure returns
-  `AtomicFailed("rename", reason)` and the temp file is removed.  Recursive
-  traversal uses inode numbers when available; on Windows `ino` is typically
-  zero, so the code falls back to a visited path string.  Tests for Windows
-  behaviour run conditionally and the README makes these caveats explicit.
+- **Windows differences**: permission-setting functions are no-ops and octal permissions are ignored by the OS. Atomic rename may fail if the destination already exists (a Windows API restriction); a failure returns `AtomicFailed("rename", reason)` and the temp file is removed. Recursive traversal uses inode numbers when available; on Windows `ino` is typically zero, so the code falls back to a visited path string. Tests for Windows behaviour run conditionally.
 
-* **Atomic write caveats** – `write_atomic`/`write_bits_atomic` implement
-  write‑to‑temp‑then‑rename.  This guarantees readers never see a partial file
-  on POSIX filesystems, but does *not* protect you from:
-  - crashes that occur **between** the temp write and the rename (a `.tmp`
-    sibling may be left behind),
-  - non‑POSIX mounts (SMB, NFS with strange semantics) where rename may not be
-    atomic.  Always clean up temp files periodically if you run on untrusted
-    filesystems.
+- **Synchronous I/O**: The JS implementation uses synchronous filesystem calls (`fs.readFileSync`, `fs.writeFileSync`, etc.). This blocks the event loop. If you target Deno/Bun, the runtime may still work but the operations remain blocking.
 
-* **Recursive read/write** – `handle.read_all_bits` now uses an iterative loop
-  to avoid stack overflow on extremely large files.  The previous recursive
-  implementation worked but could blow the call stack for multi‑gigabyte reads.
+- **Permissions**: POSIX-style `chmod`/`stat` behaviour is only meaningful on Unix-like platforms. On Windows, permissions queries/changes may be no-ops or behave differently.
 
-* **Path utilities** – `path.join_all([])` returns `"."` (previously `""`)
-  which better matches user expectations.  `path.safe_relative` detects and
-  blocks Windows drive letters as well as Unix absolute paths; it still simply
-  normalises `..` segments, so be cautious when operating on network shares.
+- **Symlink creation**: Some platforms (notably Windows) require elevated privileges to create symlinks.
 
-* **Error mapping** – the FFI bridge maps all known POSIX errors; if a new
-  platform error is received it becomes `Unknown(inner, _)`. Add new cases to
-  `fio_ffi_bridge` when extending the error set.
+- **Atomic write caveats**: `write_atomic`/`write_bits_atomic` guarantee readers never see a partial file on POSIX filesystems, but do not protect against crashes between the temp write and the rename, or non-POSIX mounts (SMB, NFS) where rename may not be atomic.
 
-* **No async/watch support** – all APIs are synchronous.  Reading very large
-  files will block the BEAM scheduler or the JavaScript event loop; use
-  `fio/handle` with small chunks or move heavy I/O off the main thread.
+- **Recursive read/write**: `handle.read_all_bits` and `handle.fold_chunks` use iterative loops to avoid stack overflow on extremely large files.
 
-These notes are intentionally broad; see the module docs for more details on
-individual functions.
+- **Path utilities**: `path.join_all([])` returns `"."`. `path.safe_relative` detects and blocks Windows drive letters as well as Unix absolute paths.
+
+- **Error mapping**: the FFI bridge maps all known POSIX errors. Unknown platform errors become `Unknown(inner, context)`. Add new cases to `fio_ffi_bridge` when extending the error set.
+
 ### Cross-Platform Notes
 
-- **`NotUtf8` detection** is consistent across Erlang and JavaScript.
-- **`delete_all`** is idempotent: succeeds silently if the path doesn't exist.
-- **Symlink** functions may require elevated privileges on Windows.
-- **Permissions** functions (`set_permissions`, `set_permissions_octal`) have no effect on Windows.
-
+- `NotUtf8` detection is consistent across Erlang and JavaScript.
+- `delete_all` is idempotent: succeeds silently if the path does not exist.
+- Symlink functions may require elevated privileges on Windows.
+- Permissions functions (`set_permissions`, `set_permissions_octal`) have no effect on Windows.
 
 ## License
 
