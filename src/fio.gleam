@@ -1,4 +1,5 @@
-import fio/error.{type FioError}
+import fio/error.{type FioError, Enoent}
+import fio/handle
 import fio/internal/io as internal
 import fio/path
 import fio/recursive
@@ -228,6 +229,63 @@ pub fn list_recursive(path: String) -> Result(List(String), FioError) {
 /// Recursively copy a directory and its contents.
 pub fn copy_directory(src: String, dest: String) -> Result(Nil, FioError) {
   recursive.copy_directory(src, dest)
+}
+
+// --- High-level helpers ---
+
+/// Create a file if it does not already exist.
+/// If the file already exists this is a no-op and returns `Ok(Nil)`.
+pub fn ensure_file(path: String) -> Result(Nil, FioError) {
+  case internal.exists(path) {
+    True -> Ok(Nil)
+    False -> internal.write(path, "")
+  }
+}
+
+/// Copy `src` to `dest` only when `src` is newer than `dest`.
+///
+/// If `dest` does not exist the copy always happens.
+/// Returns `Ok(True)` when a copy was performed, `Ok(False)` when skipped.
+pub fn copy_if_newer(src: String, dest: String) -> Result(Bool, FioError) {
+  use src_info <- result.try(internal.file_info(src))
+  case internal.file_info(dest) {
+    Error(Enoent) -> {
+      use _ <- result.try(internal.copy_file(src, dest))
+      Ok(True)
+    }
+    Error(e) -> Error(e)
+    Ok(dest_info) ->
+      case src_info.mtime_seconds > dest_info.mtime_seconds {
+        False -> Ok(False)
+        True -> {
+          use _ <- result.try(internal.copy_file(src, dest))
+          Ok(True)
+        }
+      }
+  }
+}
+
+// --- Streaming ---
+
+/// Read a file in chunks, folding each chunk into an accumulator.
+///
+/// Opens the file, reads it in `chunk_size`-byte pieces, and calls `f` on each
+/// chunk until EOF. The file handle is always closed before returning.
+///
+/// ```gleam
+/// // Count bytes without loading the whole file into memory
+/// fio.read_fold("big.bin", 65_536, 0, fn(acc, chunk) {
+///   acc + bit_array.byte_size(chunk)
+/// })
+/// ```
+pub fn read_fold(
+  path: String,
+  chunk_size: Int,
+  initial: acc,
+  f: fn(acc, BitArray) -> acc,
+) -> Result(acc, FioError) {
+  use h <- handle.with(path, handle.ReadOnly)
+  handle.fold_chunks(h, chunk_size, initial, f)
 }
 
 // --- Checksums ---
