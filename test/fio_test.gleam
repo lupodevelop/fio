@@ -1018,3 +1018,124 @@ pub fn error_describe_unknown_no_context_test() {
   let e = error.Unknown("raw_error", option.None)
   error.describe(e) |> should.equal("Unknown error: raw_error")
 }
+
+// ============================================================================
+// v1.2 Context Management
+// ============================================================================
+
+pub fn with_opened_test() {
+  let p = "_test_with_opened.txt"
+  let assert Ok(_) = fio.write(p, "context")
+  let res = fio.with_opened(p, handle.ReadOnly, fn(h) { handle.read_all(h) })
+  res |> should.equal(Ok("context"))
+  let assert Ok(_) = fio.delete(p)
+}
+
+pub fn with_writer_test() {
+  let p = "_test_with_writer.txt"
+  let res = fio.with_writer(p, fn(h) { handle.write(h, "written") })
+  res |> should.equal(Ok(Nil))
+  fio.read(p) |> should.equal(Ok("written"))
+  let assert Ok(_) = fio.delete(p)
+}
+
+// ============================================================================
+// v1.2 Write / Read Helpers
+// ============================================================================
+
+pub fn write_new_ok_test() {
+  let p = "_test_write_new_ok.txt"
+  let assert False = fio.exists(p)
+  let res = fio.write_new(p, "new content")
+  res |> should.equal(Ok(Nil))
+  fio.read(p) |> should.equal(Ok("new content"))
+  let assert Ok(_) = fio.delete(p)
+}
+
+pub fn write_new_exists_error_test() {
+  let p = "_test_write_new_err.txt"
+  let assert Ok(_) = fio.write(p, "existing")
+  let res = fio.write_new(p, "new content")
+  res |> should.equal(Error(error.Eexist))
+  fio.read(p) |> should.equal(Ok("existing"))
+  let assert Ok(_) = fio.delete(p)
+}
+
+pub fn write_if_changed_test() {
+  let p = "_test_if_changed.txt"
+  let assert Ok(True) = fio.write_if_changed(p, "first")
+  let assert Ok(False) = fio.write_if_changed(p, "first")
+  let assert Ok(True) = fio.write_if_changed(p, "second")
+  fio.read(p) |> should.equal(Ok("second"))
+  let assert Ok(_) = fio.delete(p)
+}
+
+pub fn read_lines_write_lines_test() {
+  let p = "_test_lines.txt"
+  let lines = ["hello", "world", "gleam"]
+  let assert Ok(_) = fio.write_lines(p, lines)
+
+  // Windows or unix line endings could be used depending on implementation,
+  // we expect the strings exactly as placed without newline at EOF or with it.
+  fio.read_lines(p) |> should.equal(Ok(lines))
+  let assert Ok(_) = fio.delete(p)
+}
+
+// ============================================================================
+// v1.2 Atomic
+// ============================================================================
+
+pub fn atomic_helper_test() {
+  let p = "_test_atomic_helper.txt"
+  let res = fio.atomic(p, fn(tmp) { fio.write(tmp, "atomic") })
+  res |> should.equal(Ok(Nil))
+  fio.read(p) |> should.equal(Ok("atomic"))
+
+  // Test error propagation safely
+  let res2 =
+    fio.atomic(p, fn(tmp) {
+      let assert Ok(_) = fio.write(tmp, "aborted")
+      Error(error.Eacces)
+    })
+  res2 |> should.equal(Error(error.Eacces))
+  fio.read(p) |> should.equal(Ok("atomic"))
+
+  let assert Ok(_) = fio.delete(p)
+}
+
+// ============================================================================
+// v1.2 Explain
+// ============================================================================
+
+pub fn explain_test() {
+  fio.explain(error.Enoent) |> should.equal("No such file or directory")
+}
+
+// ============================================================================
+// v1.2 Stream
+// ============================================================================
+
+pub fn stream_bytes_test() {
+  let p = "_test_stream_bytes.txt"
+  let assert Ok(_) = fio.write_bits(p, <<"hello":utf8>>)
+
+  let assert Ok(chunks) = fio.stream_bytes(p)
+
+  let concat =
+    list.fold(chunks, <<>>, fn(acc, bits) { bit_array.append(acc, bits) })
+
+  concat |> should.equal(<<"hello":utf8>>)
+  let assert Ok(_) = fio.delete(p)
+}
+
+pub fn stream_test() {
+  let p = "_test_stream.txt"
+  let assert Ok(_) = fio.write(p, "hello")
+
+  let assert Ok(strings) = fio.stream(p)
+
+  let concat = list.fold(strings, "", fn(acc, s) { acc <> s })
+
+  concat |> should.equal("hello")
+  let assert Ok(_) = fio.delete(p)
+}

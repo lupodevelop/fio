@@ -4,7 +4,10 @@ import fio/internal/io as internal
 import fio/path
 import fio/recursive
 import fio/types.{type FileInfo, type FilePermissions}
+import gleam/bit_array
+import gleam/list
 import gleam/result
+import gleam/string
 
 // Reading
 
@@ -376,4 +379,131 @@ pub fn expand(path_str: String) -> Result(String, Nil) {
 /// On Windows it also normalizes backslashes into `/`.
 pub fn safe_relative(path_str: String) -> Result(String, Nil) {
   path.safe_relative(path_str)
+}
+
+// ============================================================================
+// v1.2 Context Management
+// ============================================================================
+
+/// Evaluates a callback with an opened file handle and guarantees the handle
+/// is closed at the end, even in case of errors.
+pub fn with_opened(
+  path: String,
+  mode: handle.OpenMode,
+  callback: fn(handle.FileHandle) -> Result(a, FioError),
+) -> Result(a, FioError) {
+  handle.with(path, mode, callback)
+}
+
+/// Evaluates a callback with a file handle opened for writing and guarantees
+/// the handle is closed at the end.
+pub fn with_writer(
+  path: String,
+  callback: fn(handle.FileHandle) -> Result(a, FioError),
+) -> Result(a, FioError) {
+  handle.with(path, handle.WriteOnly, callback)
+}
+
+// ============================================================================
+// v1.2 High-level write helpers
+// ============================================================================
+
+/// Writes content to a file only if it doesn't exist yet. Returns an `Eexist`
+/// error if it does.
+pub fn write_new(path: String, content: String) -> Result(Nil, FioError) {
+  case exists(path) {
+    True -> Error(error.Eexist)
+    False -> write(path, content)
+  }
+}
+
+/// Writes content to a file. If the file already has identical content, it
+/// skips rewriting and returns `False`. If it overwrote or created, returns `True`.
+pub fn write_if_changed(path: String, content: String) -> Result(Bool, FioError) {
+  case read(path) {
+    Ok(existing) if existing == content -> Ok(False)
+    _ -> {
+      use _ <- result.try(write(path, content))
+      Ok(True)
+    }
+  }
+}
+
+// ============================================================================
+// v1.2 Text helpers
+// ============================================================================
+
+/// Reads a file and splits it into lines.
+pub fn read_lines(path: String) -> Result(List(String), FioError) {
+  use content <- result.try(read(path))
+  // Unix and Windows line endings
+  let lines = string.split(content, "\n")
+  Ok(lines)
+}
+
+/// Joins lines with newlines and writes to a file.
+pub fn write_lines(path: String, lines: List(String)) -> Result(Nil, FioError) {
+  let content = string.join(lines, "\n")
+  write(path, content)
+}
+
+// ============================================================================
+// v1.2 Stream
+// ============================================================================
+
+/// Reads a file in chunks and returns all chunks as a list of `BitArray`.
+/// Uses a 64 KiB chunk size. Returns `Error` if the file cannot be opened.
+pub fn stream_bytes(path: String) -> Result(List(BitArray), FioError) {
+  read_fold(path, 65_536, [], fn(acc, chunk) { [chunk, ..acc] })
+  |> result.map(list.reverse)
+}
+
+/// Reads a file in chunks and returns all chunks as a list of `String`.
+/// Returns `Error(NotUtf8)` if any chunk is not valid UTF-8.
+pub fn stream(path: String) -> Result(List(String), FioError) {
+  use chunks <- result.try(stream_bytes(path))
+  list.map(chunks, fn(bits) {
+    case bit_array.to_string(bits) {
+      Ok(s) -> Ok(s)
+      Error(_) -> Error(error.NotUtf8(path))
+    }
+  })
+  |> result.all
+}
+
+// ============================================================================
+// v1.2 Error helpers
+// ============================================================================
+
+/// Explains a FioError in a CLI-friendly format.
+pub fn explain(err: FioError) -> String {
+  error.describe(err)
+}
+
+// ============================================================================
+// v1.2 Atomic
+// ============================================================================
+
+/// Executes a callback providing a temporary file path to write to.
+/// If the callback succeeds, the temporary file is atomically renamed to `path`.
+pub fn atomic(
+  path: String,
+  callback: fn(String) -> Result(a, FioError),
+) -> Result(a, FioError) {
+  let tmp = path <> ".tmp." <> internal.unique_name("atomic")
+  let res = callback(tmp)
+  case res {
+    Ok(val) ->
+      case rename(tmp, path) {
+        Ok(_) -> Ok(val)
+        Error(e) -> {
+          let _ = delete(tmp)
+          Error(e)
+        }
+      }
+    Error(e) -> {
+      let _ = delete(tmp)
+      Error(e)
+    }
+  }
 }
