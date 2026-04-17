@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-04-11
+
+### Added
+
+- `fio.with_opened(path, mode, callback)`: resource-safe handle management via callback, closes the handle automatically.
+- `fio.with_writer(path, callback)`: shorthand for writing with a temporary handle and automatic cleanup.
+- `fio.write_new(path, content)`: write only when the file does not exist; returns `Error(error.Eexist)` if the file already exists.
+- `fio.write_if_changed(path, content)`: write only when the content differs from the existing file; returns `Ok(True)` when written, `Ok(False)` when skipped.
+- `fio.read_lines(path)`: read a file and split it into lines.
+- `fio.write_lines(path, lines)`: join lines with `"\n"` and write them to a file.
+- `fio.stream_bytes(path)`: read file content in raw-byte chunks as `List(BitArray)`.
+- `fio.stream(path)`: read file content in UTF-8 string chunks as `List(String)`.
+- `fio.explain(error)`: format a `FioError` as a CLI-friendly string.
+- `fio.atomic(path, callback)`: write to a temporary path and rename into place on success, with cleanup on failure.
+
+### Changed
+
+- `fio/stream` helpers are implemented on top of existing `read_fold` and `handle.fold_chunks`, preserving compatibility with current `gleam_stdlib` constraints.
+
 ## [1.1.0] - 2026-04-10
 
 ### Added
