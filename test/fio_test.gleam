@@ -1074,10 +1074,21 @@ pub fn read_lines_write_lines_test() {
   let p = "_test_lines.txt"
   let lines = ["hello", "world", "gleam"]
   let assert Ok(_) = fio.write_lines(p, lines)
-
-  // Windows or unix line endings could be used depending on implementation,
-  // we expect the strings exactly as placed without newline at EOF or with it.
   fio.read_lines(p) |> should.equal(Ok(lines))
+  let assert Ok(_) = fio.delete(p)
+}
+
+pub fn read_lines_crlf_test() {
+  let p = "_test_lines_crlf.txt"
+  let assert Ok(_) = fio.write_bits(p, <<"hello\r\nworld\r\nglea m":utf8>>)
+  fio.read_lines(p) |> should.equal(Ok(["hello", "world", "glea m"]))
+  let assert Ok(_) = fio.delete(p)
+}
+
+pub fn read_lines_mixed_endings_test() {
+  let p = "_test_lines_mixed.txt"
+  let assert Ok(_) = fio.write_bits(p, <<"a\r\nb\nc":utf8>>)
+  fio.read_lines(p) |> should.equal(Ok(["a", "b", "c"]))
   let assert Ok(_) = fio.delete(p)
 }
 
@@ -1091,7 +1102,7 @@ pub fn atomic_helper_test() {
   res |> should.equal(Ok(Nil))
   fio.read(p) |> should.equal(Ok("atomic"))
 
-  // Test error propagation safely
+  // Error: callback fails, tmp must be cleaned up, original file untouched
   let res2 =
     fio.atomic(p, fn(tmp) {
       let assert Ok(_) = fio.write(tmp, "aborted")
@@ -1100,6 +1111,32 @@ pub fn atomic_helper_test() {
   res2 |> should.equal(Error(error.Eacces))
   fio.read(p) |> should.equal(Ok("atomic"))
 
+  let assert Ok(_) = fio.delete(p)
+}
+
+pub fn atomic_tmp_in_same_dir_test() {
+  // tmp file must land in the same directory as the target, not cwd
+  let dir = "_test_atomic_dir"
+  let p = dir <> "/target.txt"
+  let assert Ok(_) = fio.create_directory(dir)
+  let assert Ok(_) =
+    fio.atomic(p, fn(tmp) {
+      // tmp must be inside dir, not at root
+      string.starts_with(tmp, dir) |> should.equal(True)
+      fio.write(tmp, "ok")
+    })
+  fio.read(p) |> should.equal(Ok("ok"))
+  let assert Ok(_) = fio.delete_all(dir)
+}
+
+pub fn atomic_tmp_prefix_test() {
+  // tmp file must use .__fio_tmp_ prefix (consistent with write_atomic)
+  let p = "_test_atomic_prefix.txt"
+  let assert Ok(_) =
+    fio.atomic(p, fn(tmp) {
+      string.contains(tmp, ".__fio_tmp_") |> should.equal(True)
+      fio.write(tmp, "ok")
+    })
   let assert Ok(_) = fio.delete(p)
 }
 

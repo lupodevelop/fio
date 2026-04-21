@@ -26,9 +26,9 @@ file-handle abstractions, and platform notes.
 | `fio.copy_if_newer(src, dest)` | Copy only when `src` is newer than `dest`; returns `Bool` |
 | `fio.write_new(path, content)` | Write only if the file does not exist; returns `Eexist` if it does |
 | `fio.write_if_changed(path, content)` | Write only when content differs; returns `Bool` |
-| `fio.read_lines(path)` | Read a file and split it into lines |
+| `fio.read_lines(path)` | Read a file and split it into lines; both `\r\n` and `\n` line endings are normalised |
 | `fio.write_lines(path, lines)` | Join lines with newline and write to a file |
-| `fio.atomic(path, callback)` | Atomically write via a temporary path then rename |
+| `fio.atomic(path, callback)` | Write via a temp file (same directory as target, `.__fio_tmp_*` prefix) then atomically rename |
 | `fio.stream(path)` | Read a file in chunks of UTF-8 strings |
 | `fio.stream_bytes(path)` | Read a file in chunks of raw bytes |
 | `fio.read_fold(path, chunk_size, acc, f)` | Fold over file chunks without loading it all into memory |

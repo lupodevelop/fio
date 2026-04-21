@@ -434,11 +434,10 @@ pub fn write_if_changed(path: String, content: String) -> Result(Bool, FioError)
 // ============================================================================
 
 /// Reads a file and splits it into lines.
+/// Both `\n` (Unix) and `\r\n` (Windows) line endings are normalised.
 pub fn read_lines(path: String) -> Result(List(String), FioError) {
   use content <- result.try(read(path))
-  // Unix and Windows line endings
-  let lines = string.split(content, "\n")
-  Ok(lines)
+  Ok(string.split(string.replace(content, "\r\n", "\n"), "\n"))
 }
 
 /// Joins lines with newlines and writes to a file.
@@ -486,11 +485,14 @@ pub fn explain(err: FioError) -> String {
 
 /// Executes a callback providing a temporary file path to write to.
 /// If the callback succeeds, the temporary file is atomically renamed to `path`.
+/// The temporary file is placed in the same directory as `path` using the
+/// same `.__fio_tmp_*` prefix as `write_atomic`.
 pub fn atomic(
   path: String,
   callback: fn(String) -> Result(a, FioError),
 ) -> Result(a, FioError) {
-  let tmp = path <> ".tmp." <> internal.unique_name("atomic")
+  let dir = path.directory_name(path)
+  let tmp = path.join(dir, ".__fio_tmp_" <> internal.unique_name("fio_atomic_"))
   let res = callback(tmp)
   case res {
     Ok(val) ->
