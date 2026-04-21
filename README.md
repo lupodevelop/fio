@@ -24,10 +24,10 @@ All functionality is available via **`import fio`** (no need for submodule impor
 - **Cross-platform**: Works identically on Erlang, Node.js, Deno, and Bun.
 - **Rich errors**: POSIX-style error codes plus semantic types like `NotUtf8(path)`. Pattern match precisely.
 - **Atomic writes**: `write_atomic` / `write_bits_atomic` guarantee readers never see partial content. Temporary files are cleaned up even if the rename fails.
-- **Atomic helper**: `fio.atomic(path, fn(tmp_path) { ... })` makes temporary-file writes explicit and ergonomic.
+- **Atomic helper**: `fio.atomic(path, fn(tmp_path) { ... })` makes temporary-file writes explicit and ergonomic. The temp file lands in the same directory as the target and uses the `.__fio_tmp_*` prefix, consistent with `write_atomic`.
 - **Streaming**: `read_fold`, `stream`, `stream_bytes`, and `handle.fold_chunks` let you process files chunk by chunk without loading them fully into memory.
 - **Context helpers**: `with_opened` and `with_writer` provide resource-safe file-handle callbacks.
-- **High-level helpers**: `ensure_file`, `copy_if_newer`, `write_new`, `write_if_changed`, `read_lines`, `write_lines`, and `fio/json` for common workflows.
+- **High-level helpers**: `ensure_file`, `copy_if_newer`, `write_new`, `write_if_changed`, `read_lines` (normalises `\r\n` and `\n`), `write_lines`, and `fio/json` for common workflows.
 - **Error UX**: `fio.explain(error)` returns a CLI-friendly description string.
 - **Type-safe permissions**: `FilePermissions` with `Set(Permission)`, not magic integers.
 - **Path operations**: `join`, `split`, `expand`, `safe_relative`, and more, built in.
