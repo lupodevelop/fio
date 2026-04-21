@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-04-21
+
+### Fixed
+
+- **`read_lines`**: `\r\n` (Windows line endings) are now normalised to `\n`
+  before splitting. Previously lines on Windows-written files contained a
+  trailing `\r`, causing silent comparison failures.
+
+- **`atomic` temporary file placement**: the temp file now lands in the same
+  directory as the target path and uses the `.__fio_tmp_*` prefix, consistent
+  with `write_atomic`. Previously it used `.tmp.atomic*` relative to the
+  current working directory, which could fail on cross-device renames and
+  left differently-named debris on error.
+
+### Changed
+
+- `gleam_stdlib` constraint updated from `>= 0.69.0 and < 1.0.0` to
+  `>= 1.0.0 and < 2.0.0` to track the stable release.
+
 ## [1.2.0] - 2026-04-11
 
 ### Added
