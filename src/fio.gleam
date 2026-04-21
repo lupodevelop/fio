@@ -492,8 +492,7 @@ pub fn atomic(
   callback: fn(String) -> Result(a, FioError),
 ) -> Result(a, FioError) {
   let dir = path.directory_name(path)
-  let tmp =
-    path.join(dir, ".__fio_tmp_" <> internal.unique_name("fio_atomic_"))
+  let tmp = path.join(dir, ".__fio_tmp_" <> internal.unique_name("fio_atomic_"))
   let res = callback(tmp)
   case res {
     Ok(val) ->

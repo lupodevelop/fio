@@ -90,8 +90,7 @@ pub fn main() -> Nil {
   // ── 5. Nested directories ──────────────────────────────────────────
   let nested = path.join(out, "dirs/a/b/c")
   case fio.create_directory_all(nested) {
-    Ok(_) ->
-      woof.info("Nested directories created", [woof.str("path", nested)])
+    Ok(_) -> woof.info("Nested directories created", [woof.str("path", nested)])
     Error(e) ->
       woof.error("create_directory_all failed", [
         woof.str("error", error.describe(e)),
@@ -204,8 +203,7 @@ pub fn main() -> Nil {
         woof.str("link", link),
       ])
       case fio.is_symlink(link) {
-        Ok(yes) ->
-          woof.info("Symlink verified", [woof.bool("is_symlink", yes)])
+        Ok(yes) -> woof.info("Symlink verified", [woof.bool("is_symlink", yes)])
         Error(e) ->
           woof.warning("is_symlink failed", [
             woof.str("error", error.describe(e)),
@@ -333,10 +331,7 @@ pub fn main() -> Nil {
     woof.str("stem", path.stem("archive.tar.gz")),
     woof.str("with_extension", path.with_extension("main.gleam", "js")),
     woof.bool("is_absolute_usr", path.is_absolute("/usr")),
-    woof.str(
-      "join_all",
-      path.join_all(["src", "fio", "internal", "io.gleam"]),
-    ),
+    woof.str("join_all", path.join_all(["src", "fio", "internal", "io.gleam"])),
   ])
 
   // ── 13. Touch ────────────────────────────────────────────────────────
@@ -379,17 +374,13 @@ pub fn main() -> Nil {
       "unsafe_escape",
       string.inspect(path.safe_relative("../../../etc/passwd")),
     ),
-    woof.str(
-      "unsafe_absolute",
-      string.inspect(path.safe_relative("/usr/bin")),
-    ),
+    woof.str("unsafe_absolute", string.inspect(path.safe_relative("/usr/bin"))),
   ])
 
   // ── 16. Utility ─────────────────────────────────────────────────────
   case fio.current_directory() {
     Ok(cwd) -> woof.info("Working directory", [woof.str("cwd", cwd)])
-    Error(e) ->
-      woof.error("cwd failed", [woof.str("error", error.describe(e))])
+    Error(e) -> woof.error("cwd failed", [woof.str("error", error.describe(e))])
   }
   woof.info("Temp directory", [woof.str("tmp_dir", fio.tmp_dir())])
 
